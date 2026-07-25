@@ -49,6 +49,7 @@ function rebrickableDbPlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: '/pab-part-out/',
   plugins: [react(), tailwindcss(), rebrickableDbPlugin()],
   resolve: {
     alias: {
