@@ -50,14 +50,26 @@ function metaFromOrders(
   return {}
 }
 
+function excludedSet(project: Project): Set<ElementId> {
+  return new Set(project.excludedElementIds ?? [])
+}
+
 /** Compute required vs ordered vs remaining for a project. */
 export function computeDiff(project: Project): DiffRow[] {
   const orderedMap = aggregateOrders(project.orders)
   const bomIds = new Set(project.parts.map((p) => p.elementId))
+  const excluded = excludedSet(project)
   const rows: DiffRow[] = []
 
   for (const part of project.parts) {
-    const ordered = orderedMap.get(part.elementId) ?? 0
+    const isExcluded = excluded.has(part.elementId)
+    const rawOrdered = orderedMap.get(part.elementId) ?? 0
+    // Excluded parts do not appear as ordered / remaining / surplus.
+    const ordered = isExcluded ? 0 : rawOrdered
+    const remaining = isExcluded
+      ? 0
+      : Math.max(0, part.requiredQty - ordered)
+    const surplus = isExcluded ? 0 : Math.max(0, ordered - part.requiredQty)
     const meta =
       part.name || part.imageUrl
         ? { name: part.name, imageUrl: part.imageUrl }
@@ -69,9 +81,10 @@ export function computeDiff(project: Project): DiffRow[] {
       imageUrl: meta.imageUrl,
       required: part.requiredQty,
       ordered,
-      remaining: Math.max(0, part.requiredQty - ordered),
-      surplus: Math.max(0, ordered - part.requiredQty),
+      remaining,
+      surplus,
       orphan: false,
+      excluded: isExcluded,
     })
   }
 
@@ -87,6 +100,7 @@ export function computeDiff(project: Project): DiffRow[] {
       remaining: 0,
       surplus: ordered,
       orphan: true,
+      excluded: false,
     })
   }
 
@@ -96,20 +110,26 @@ export function computeDiff(project: Project): DiffRow[] {
 export function computeStats(project: Project): ProjectStats {
   const rows = computeDiff(project)
   const bomRows = rows.filter((r) => !r.orphan)
+  const activeRows = bomRows.filter((r) => !r.excluded)
+  const excludedRows = bomRows.filter((r) => r.excluded)
 
   const totalRequired = bomRows.reduce((sum, r) => sum + r.required, 0)
-  const totalOrdered = bomRows.reduce((sum, r) => sum + r.ordered, 0)
-  const totalRemaining = bomRows.reduce((sum, r) => sum + r.remaining, 0)
-  const covered = bomRows.reduce(
-    (sum, r) => sum + Math.min(r.ordered, r.required),
-    0,
-  )
+  const totalOrdered = activeRows.reduce((sum, r) => sum + r.ordered, 0)
+  const totalRemaining = activeRows.reduce((sum, r) => sum + r.remaining, 0)
+  const totalExcluded = excludedRows.reduce((sum, r) => sum + r.required, 0)
+
+  // Excluded pieces count as fully covered toward completion.
+  const covered =
+    activeRows.reduce((sum, r) => sum + Math.min(r.ordered, r.required), 0) +
+    totalExcluded
 
   return {
     uniqueElements: bomRows.length,
     totalRequired,
     totalOrdered,
     totalRemaining,
+    totalExcluded,
+    excludedElements: excludedRows.length,
     percentComplete:
       totalRequired === 0 ? 0 : Math.min(100, (covered / totalRequired) * 100),
   }
@@ -119,6 +139,6 @@ export function remainingParts(
   rows: DiffRow[],
 ): Array<{ elementId: ElementId; quantity: number }> {
   return rows
-    .filter((r) => !r.orphan && r.remaining > 0)
+    .filter((r) => !r.orphan && !r.excluded && r.remaining > 0)
     .map((r) => ({ elementId: r.elementId, quantity: r.remaining }))
 }

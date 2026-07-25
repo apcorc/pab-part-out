@@ -32,6 +32,8 @@ export interface Project {
   updatedAt: string
   parts: SetPart[]
   orders: Order[]
+  /** Element IDs intentionally skipped (still count toward completion). */
+  excludedElementIds: ElementId[]
 }
 
 export interface ProjectStats {
@@ -39,6 +41,8 @@ export interface ProjectStats {
   totalRequired: number
   totalOrdered: number
   totalRemaining: number
+  totalExcluded: number
+  excludedElements: number
   percentComplete: number
 }
 
@@ -51,11 +55,18 @@ export interface DiffRow {
   remaining: number
   surplus: number
   orphan: boolean
+  excluded: boolean
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
-export type PartsFilter = 'all' | 'remaining' | 'complete' | 'surplus' | 'orphans'
+export type PartsFilter =
+  | 'all'
+  | 'remaining'
+  | 'complete'
+  | 'surplus'
+  | 'excluded'
+  | 'orphans'
 
 export interface AppPersistedState {
   version: 1

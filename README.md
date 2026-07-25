@@ -19,8 +19,18 @@ npm run dev
 - Live required / ordered / remaining / surplus diff
 - Progress dashboard
 - LEGO CSV export of remaining parts
-- BrickLink XML export UI (gated until Element→BrickLink mapping exists)
+- Part names from Rebrickable `parts.csv` + `elements.csv`
+- BrickLink Wanted List XML export (Element → part_num + BrickLink color)
 - Light / dark / system theme
+
+## Rebrickable catalog
+
+Place downloads from [Rebrickable](https://rebrickable.com/downloads/) in `rebrickable-db/`:
+
+- `elements.csv` — `element_id,part_num,color_id,…`
+- `parts.csv` — `part_num,name,…`
+
+These are served at `/rebrickable-db/*` in dev and copied into the production build. A bundled Rebrickable→BrickLink color map is used for XML color IDs.
 
 ## Sample files
 

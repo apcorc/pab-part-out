@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
+  ElementId,
   Order,
   Project,
   SetPart,
@@ -27,7 +28,21 @@ interface AppState {
   removeOrder: (projectId: string, orderId: string) => void
   renameOrder: (projectId: string, orderId: string, label: string) => void
 
+  setPartExcluded: (
+    projectId: string,
+    elementId: ElementId,
+    excluded: boolean,
+  ) => void
+
   setTheme: (theme: ThemeMode) => void
+}
+
+function pruneExcluded(
+  excludedElementIds: ElementId[] | undefined,
+  parts: SetPart[],
+): ElementId[] {
+  const bomIds = new Set(parts.map((p) => p.elementId))
+  return (excludedElementIds ?? []).filter((id) => bomIds.has(id))
 }
 
 function nowIso(): string {
@@ -64,6 +79,7 @@ export const useAppStore = create<AppState>()(
           updatedAt: timestamp,
           parts: [],
           orders: [],
+          excludedElementIds: [],
         }
         set((state) => ({
           projects: [project, ...state.projects],
@@ -97,19 +113,27 @@ export const useAppStore = create<AppState>()(
 
       replaceBom: (projectId, parts) => {
         set((state) => ({
-          projects: updateProject(state.projects, projectId, (p) => ({
-            ...p,
-            parts: mergeParts(parts),
-          })),
+          projects: updateProject(state.projects, projectId, (p) => {
+            const nextParts = mergeParts(parts)
+            return {
+              ...p,
+              parts: nextParts,
+              excludedElementIds: pruneExcluded(p.excludedElementIds, nextParts),
+            }
+          }),
         }))
       },
 
       mergeBom: (projectId, parts) => {
         set((state) => ({
-          projects: updateProject(state.projects, projectId, (p) => ({
-            ...p,
-            parts: mergeParts([...p.parts, ...parts]),
-          })),
+          projects: updateProject(state.projects, projectId, (p) => {
+            const nextParts = mergeParts([...p.parts, ...parts])
+            return {
+              ...p,
+              parts: nextParts,
+              excludedElementIds: pruneExcluded(p.excludedElementIds, nextParts),
+            }
+          }),
         }))
       },
 
@@ -141,6 +165,20 @@ export const useAppStore = create<AppState>()(
               o.id === orderId ? { ...o, label: trimmed } : o,
             ),
           })),
+        }))
+      },
+
+      setPartExcluded: (projectId, elementId, excluded) => {
+        set((state) => ({
+          projects: updateProject(state.projects, projectId, (p) => {
+            const current = new Set(p.excludedElementIds ?? [])
+            if (excluded) current.add(elementId)
+            else current.delete(elementId)
+            return {
+              ...p,
+              excludedElementIds: Array.from(current),
+            }
+          }),
         }))
       },
 

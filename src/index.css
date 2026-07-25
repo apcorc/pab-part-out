@@ -218,6 +218,16 @@ body {
   color: #fbbf24;
 }
 
+.badge-muted {
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  text-transform: uppercase;
+}
+
 :focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: 2px;

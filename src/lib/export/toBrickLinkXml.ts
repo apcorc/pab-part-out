@@ -1,16 +1,6 @@
 import type { BrickLinkMapping, DiffRow } from '@/domain/types'
 import { remainingParts } from '@/domain/diff'
 
-/**
- * BrickLink Wanted List XML requires itemID + colorID.
- * Without a mapping table this cannot be generated from Element IDs alone.
- */
-export function canExportBrickLinkXml(
-  mappings: BrickLinkMapping[] | undefined | null,
-): boolean {
-  return Array.isArray(mappings) && mappings.length > 0
-}
-
 export function toBrickLinkXml(
   rows: DiffRow[],
   mappings: BrickLinkMapping[],

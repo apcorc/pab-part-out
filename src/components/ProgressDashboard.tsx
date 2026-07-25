@@ -33,11 +33,19 @@ export function ProgressDashboard({ stats }: ProgressDashboardProps) {
             <span className="text-lg text-[var(--muted)]">%</span>
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
           <Stat label="Elements" value={stats.uniqueElements} />
           <Stat label="Required" value={stats.totalRequired} />
           <Stat label="Ordered" value={stats.totalOrdered} />
           <Stat label="Remaining" value={stats.totalRemaining} />
+          <Stat
+            label="Excluded"
+            value={
+              stats.excludedElements > 0
+                ? `${stats.totalExcluded} (${stats.excludedElements})`
+                : 0
+            }
+          />
         </div>
       </div>
       <div
@@ -53,6 +61,12 @@ export function ProgressDashboard({ stats }: ProgressDashboardProps) {
           style={{ width: `${pct}%` }}
         />
       </div>
+      {stats.excludedElements > 0 ? (
+        <p className="mt-2 text-xs text-[var(--muted)]">
+          Excluded pieces count toward completion but are omitted from remaining
+          exports.
+        </p>
+      ) : null}
     </section>
   )
 }

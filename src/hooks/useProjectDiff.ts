@@ -12,6 +12,8 @@ export function useProjectDiff(project: Project | null) {
           totalRequired: 0,
           totalOrdered: 0,
           totalRemaining: 0,
+          totalExcluded: 0,
+          excludedElements: 0,
           percentComplete: 0,
         },
       }

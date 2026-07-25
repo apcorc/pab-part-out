@@ -6,12 +6,17 @@ import { PartsTable } from '@/components/PartsTable'
 import { ProgressDashboard } from '@/components/ProgressDashboard'
 import { ProjectHeader } from '@/components/ProjectHeader'
 import { useProjectDiff } from '@/hooks/useProjectDiff'
+import { useRebrickableCatalog } from '@/hooks/useRebrickableCatalog'
+import { enrichDiffRows } from '@/lib/rebrickable/catalog'
 import { selectActiveProject, useAppStore } from '@/store/useAppStore'
 
 export function MainPanel() {
   const project = useAppStore(selectActiveProject)
   const createProject = useAppStore((s) => s.createProject)
   const { rows, stats } = useProjectDiff(project)
+  const { catalog, loading: catalogLoading, error: catalogError } =
+    useRebrickableCatalog()
+  const enrichedRows = enrichDiffRows(rows, catalog)
 
   if (!project) {
     return (
@@ -43,8 +48,14 @@ export function MainPanel() {
       <ProgressDashboard stats={stats} />
       <ImportZone project={project} />
       <OrdersPanel project={project} />
-      <PartsTable rows={rows} />
-      <ExportBar projectName={project.name} rows={rows} />
+      <ExportBar
+        projectName={project.name}
+        rows={enrichedRows}
+        catalog={catalog}
+        catalogLoading={catalogLoading}
+        catalogError={catalogError}
+      />
+      <PartsTable projectId={project.id} rows={enrichedRows} />
     </main>
   )
 }
