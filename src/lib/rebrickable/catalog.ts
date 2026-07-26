@@ -75,9 +75,10 @@ function parsePartNames(text: string): Map<string, string> {
 }
 
 async function buildCatalog(): Promise<RebrickableCatalog> {
+  const base = import.meta.env.BASE_URL
   const [elementsText, partsText] = await Promise.all([
-    fetchCsv('/rebrickable-db/elements.csv'),
-    fetchCsv('/rebrickable-db/parts.csv'),
+    fetchCsv(`${base}rebrickable-db/elements.csv`),
+    fetchCsv(`${base}rebrickable-db/parts.csv`),
   ])
 
   return {

@@ -8,29 +8,55 @@ function rebrickableDbPlugin(): Plugin {
   const dir = path.resolve(__dirname, 'rebrickable-db')
   const files = ['elements.csv', 'parts.csv'] as const
 
+  function serveCsv(
+    url: string | undefined,
+    prefixes: string[],
+    res: import('http').ServerResponse,
+    next: () => void,
+  ) {
+    if (!url) {
+      next()
+      return
+    }
+    const pathname = url.split('?')[0] ?? ''
+    const prefix = prefixes.find((p) => pathname.startsWith(p))
+    if (!prefix) {
+      next()
+      return
+    }
+    const name = decodeURIComponent(pathname.slice(prefix.length))
+    if (!files.includes(name as (typeof files)[number])) {
+      next()
+      return
+    }
+    const file = path.join(dir, name)
+    if (!fs.existsSync(file)) {
+      res.statusCode = 404
+      res.end('Not found')
+      return
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    fs.createReadStream(file).pipe(res)
+  }
+
   return {
     name: 'rebrickable-db',
     configureServer(server) {
+      const basePrefix = `${server.config.base}rebrickable-db/`.replace(
+        /\/{2,}/g,
+        '/',
+      )
       server.middlewares.use((req, res, next) => {
-        if (!req.url?.startsWith('/rebrickable-db/')) {
-          next()
-          return
-        }
-        const name = decodeURIComponent(
-          req.url.slice('/rebrickable-db/'.length).split('?')[0] ?? '',
-        )
-        if (!files.includes(name as (typeof files)[number])) {
-          next()
-          return
-        }
-        const file = path.join(dir, name)
-        if (!fs.existsSync(file)) {
-          res.statusCode = 404
-          res.end('Not found')
-          return
-        }
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-        fs.createReadStream(file).pipe(res)
+        serveCsv(req.url, [basePrefix, '/rebrickable-db/'], res, next)
+      })
+    },
+    configurePreviewServer(server) {
+      const basePrefix = `${server.config.base}rebrickable-db/`.replace(
+        /\/{2,}/g,
+        '/',
+      )
+      server.middlewares.use((req, res, next) => {
+        serveCsv(req.url, [basePrefix, '/rebrickable-db/'], res, next)
       })
     },
     writeBundle(options) {
