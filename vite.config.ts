@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 function rebrickableDbPlugin(): Plugin {
   const dir = path.resolve(__dirname, 'rebrickable-db')
   const files = ['elements.csv', 'parts.csv'] as const
@@ -71,12 +73,12 @@ function rebrickableDbPlugin(): Plugin {
         }
       }
     },
-  }
+  };
 }
 
 export default defineConfig({
   base: '/pab-part-out/',
-  plugins: [react(), tailwindcss(), rebrickableDbPlugin()],
+  plugins: [react(), tailwindcss(), rebrickableDbPlugin(), cloudflare()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
