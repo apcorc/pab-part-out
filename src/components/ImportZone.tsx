@@ -2,8 +2,19 @@ import { useState } from 'react'
 import { FileDropzone } from '@/components/ui/FileDropzone'
 import { InlineBanner } from '@/components/ui/InlineBanner'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { parseSetListFile } from '@/lib/import/parseSetList'
+import {
+  isBrickLinkSetList,
+  parseSetListText,
+  type SetListParseResult,
+} from '@/lib/import/parseSetList'
+import type { RejectedBrickLinkItem } from '@/lib/import/parseBrickLink'
 import { parsePabOrderFile } from '@/lib/import/parsePabOrder'
+import { brickLinkItemsToXml } from '@/lib/export/toBrickLinkXml'
+import { downloadTextFile } from '@/lib/export/toLegoCsv'
+import {
+  getCachedCatalog,
+  loadRebrickableCatalog,
+} from '@/lib/rebrickable/catalog'
 import type { Project, SetPart } from '@/domain/types'
 import { useAppStore } from '@/store/useAppStore'
 
@@ -17,6 +28,36 @@ interface PendingBom {
   fileName: string
 }
 
+interface RejectedDownload {
+  fileName: string
+  xml: string
+  count: number
+}
+
+function rejectedDownloadName(fileName: string): string {
+  const base =
+    fileName.replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '_') || 'bricklink'
+  return `${base}-rejected.xml`
+}
+
+function rejectionNotice(fileName: string, rejected: RejectedBrickLinkItem[]): RejectedDownload | null {
+  if (rejected.length === 0) return null
+  return {
+    fileName,
+    xml: brickLinkItemsToXml(
+      rejected.map((row) => ({
+        itemType: row.item.itemType,
+        itemId: row.item.itemId,
+        colorId: row.item.colorId,
+        colorText: row.item.colorText,
+        quantity: row.item.quantity,
+        remarks: row.reason,
+      })),
+    ),
+    count: rejected.length,
+  }
+}
+
 export function ImportZone({ project }: ImportZoneProps) {
   const replaceBom = useAppStore((s) => s.replaceBom)
   const addOrder = useAppStore((s) => s.addOrder)
@@ -27,11 +68,30 @@ export function ImportZone({ project }: ImportZoneProps) {
     items: string[]
   } | null>(null)
   const [pendingBom, setPendingBom] = useState<PendingBom | null>(null)
+  const [rejectedDownload, setRejectedDownload] = useState<RejectedDownload | null>(null)
 
-  const applyBom = (parts: SetPart[], warnings: string[], fileName: string) => {
+  const downloadRejected = () => {
+    if (!rejectedDownload) return
+    downloadTextFile(
+      rejectedDownload.xml,
+      rejectedDownloadName(rejectedDownload.fileName),
+      'application/xml;charset=utf-8',
+    )
+  }
+
+  const noteRejections = (fileName: string, rejected: RejectedBrickLinkItem[]) => {
+    setRejectedDownload(rejectionNotice(fileName, rejected))
+  }
+
+  const applyBom = (
+    parts: SetPart[],
+    warnings: string[],
+    fileName: string,
+    rejectedCount = 0,
+  ) => {
     replaceBom(project.id, parts)
     setMessages({
-      tone: 'success',
+      tone: rejectedCount > 0 ? 'info' : 'success',
       title: `Loaded set list from ${fileName}`,
       items: [`${parts.length} unique element(s)`, ...warnings],
     })
@@ -40,14 +100,45 @@ export function ImportZone({ project }: ImportZoneProps) {
   const onSetFiles = async (files: File[]) => {
     const file = files[0]
     if (!file) return
-    const result = await parseSetListFile(file)
+    const text = await file.text()
+    setRejectedDownload(null)
+    let catalog = getCachedCatalog()
+    if (isBrickLinkSetList(file.name, text)) {
+      if (!catalog?.loaded) {
+        setMessages({
+          tone: 'info',
+          title: `Reading ${file.name}`,
+          items: ['Matching BrickLink parts to LEGO element IDs.'],
+        })
+      }
+      try {
+        catalog = await loadRebrickableCatalog()
+      } catch (err: unknown) {
+        setMessages({
+          tone: 'error',
+          title: `Could not import ${file.name}`,
+          items: [
+            'BrickLink files need the Rebrickable catalog to map part and color to a LEGO element ID.',
+            err instanceof Error ? err.message : String(err),
+          ],
+        })
+        return
+      }
+    }
+
+    const result: SetListParseResult = parseSetListText(file.name, text, catalog)
+    noteRejections(file.name, result.rejected)
     if (result.data.length === 0) {
+      const items = [
+        ...result.errors.map((e) =>
+          e.row ? `Row ${e.row}: ${e.message}` : e.message,
+        ),
+        ...result.warnings,
+      ]
       setMessages({
         tone: 'error',
         title: `Could not import ${file.name}`,
-        items: result.errors.map((e) =>
-          e.row ? `Row ${e.row}: ${e.message}` : e.message,
-        ),
+        items: items.length > 0 ? items : ['Nothing to import'],
       })
       return
     }
@@ -60,11 +151,12 @@ export function ImportZone({ project }: ImportZoneProps) {
     ]
 
     if (project.parts.length > 0) {
+      setMessages(null)
       setPendingBom({ parts: result.data, warnings, fileName: file.name })
       return
     }
 
-    applyBom(result.data, warnings, file.name)
+    applyBom(result.data, warnings, file.name, result.rejected.length)
   }
 
   const onOrderFiles = async (files: File[]) => {
@@ -102,8 +194,8 @@ export function ImportZone({ project }: ImportZoneProps) {
       <div className="grid gap-3 md:grid-cols-2">
         <FileDropzone
           label="Upload set parts list"
-          hint="CSV or JSON · elementId, quantity · replaces BOM"
-          accept=".csv,.json,text/csv,application/json"
+          hint="CSV, JSON, or BrickLink XML · replaces BOM"
+          accept=".csv,.json,.xml,.bsx,.txt,text/csv,application/json,text/xml,application/xml,text/plain"
           onFiles={onSetFiles}
         />
         <FileDropzone
@@ -120,7 +212,15 @@ export function ImportZone({ project }: ImportZoneProps) {
           tone={messages.tone}
           title={messages.title}
           messages={messages.items}
-          onDismiss={() => setMessages(null)}
+          action={
+            rejectedDownload
+              ? { label: 'Download rejected XML', onClick: downloadRejected }
+              : undefined
+          }
+          onDismiss={() => {
+            setMessages(null)
+            setRejectedDownload(null)
+          }}
         />
       ) : null}
 
@@ -130,10 +230,25 @@ export function ImportZone({ project }: ImportZoneProps) {
         message="Uploading a new set list replaces the current BOM. Imported orders are kept."
         confirmLabel="Replace"
         danger
-        onCancel={() => setPendingBom(null)}
+        onCancel={() => {
+          setPendingBom(null)
+          if (!rejectedDownload) return
+          setMessages({
+            tone: 'info',
+            title: 'Set list was not replaced',
+            items: [
+              `${rejectedDownload.count} rejected ${rejectedDownload.count === 1 ? 'item' : 'items'} from ${rejectedDownload.fileName} can still be downloaded.`,
+            ],
+          })
+        }}
         onConfirm={() => {
           if (!pendingBom) return
-          applyBom(pendingBom.parts, pendingBom.warnings, pendingBom.fileName)
+          applyBom(
+            pendingBom.parts,
+            pendingBom.warnings,
+            pendingBom.fileName,
+            rejectedDownload?.count ?? 0,
+          )
           setPendingBom(null)
         }}
       />

@@ -4,6 +4,7 @@ interface InlineBannerProps {
   tone?: 'info' | 'success' | 'error'
   title?: string
   messages: string[]
+  action?: { label: string; onClick: () => void }
   onDismiss?: () => void
 }
 
@@ -11,6 +12,7 @@ export function InlineBanner({
   tone = 'info',
   title,
   messages,
+  action,
   onDismiss,
 }: InlineBannerProps) {
   if (messages.length === 0) return null
@@ -31,6 +33,15 @@ export function InlineBanner({
             <li>…and {messages.length - 8} more</li>
           ) : null}
         </ul>
+        {action ? (
+          <button
+            type="button"
+            className="btn-secondary mt-2"
+            onClick={action.onClick}
+          >
+            {action.label}
+          </button>
+        ) : null}
       </div>
       {onDismiss ? (
         <button
