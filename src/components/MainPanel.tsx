@@ -46,7 +46,7 @@ export function MainPanel() {
     <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-6">
       <ProjectHeader project={project} />
       <ProgressDashboard stats={stats} />
-      <ImportZone project={project} />
+      <ImportZone key={project.id} project={project} />
       <OrdersPanel project={project} />
       <ExportBar
         projectName={project.name}
