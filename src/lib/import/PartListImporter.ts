@@ -1,8 +1,8 @@
 import type { ParseResult, SetPart } from '@/domain/types'
 
 /**
- * Future adapter hook for Rebrickable / BrickLink XML set lists.
- * v1 uses parseSetListFile / parsePabOrderFile directly.
+ * Adapter hook for additional set-list formats.
+ * CSV, JSON, and BrickLink XML/CSV are parsed by parseSetListFile.
  */
 export interface PartListImporter {
   readonly id: string

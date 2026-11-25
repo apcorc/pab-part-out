@@ -2,7 +2,7 @@
 
 Local-first SPA for parting out LEGO sets via Pick a Brick (PaB).
 
-Import a set parts list (`elementId,quantity`), drop one or more PaB order CSVs, track remaining pieces, and export a LEGO-compatible CSV of what you still need.
+Import a set parts list (`elementId,quantity`, or a BrickLink wanted list), drop one or more PaB order CSVs, track remaining pieces, and export a LEGO-compatible CSV of what you still need.
 
 ## Quick start
 
@@ -14,7 +14,7 @@ npm run dev
 ## Features
 
 - Multi-project workspace (persisted in `localStorage`)
-- Set list import (CSV / JSON)
+- Set list import (CSV / JSON, or BrickLink XML and CSV wanted lists)
 - Multi-file PaB order CSV import with flexible column names
 - Live required / ordered / remaining / surplus diff
 - Progress dashboard
@@ -36,6 +36,7 @@ These are served at `/rebrickable-db/*` in dev and copied into the production bu
 
 - [`list-template.csv`](list-template.csv)
 - [`list-template.json`](list-template.json)
+- [`bricklink-wanted.xml`](bricklink-wanted.xml) — BrickLink wanted list (part + color ID)
 - Also served at `/fixtures/`
 
 ## Scripts
