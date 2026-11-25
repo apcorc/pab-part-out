@@ -14,7 +14,8 @@ import {
   getCachedCatalog,
   loadRebrickableCatalog,
 } from '@/lib/rebrickable/catalog'
-import type { Project, SetPart } from '@/domain/types'
+import type { PartList, Project, SetPart } from '@/domain/types'
+import { combinedParts } from '@/domain/diff'
 import { useAppStore } from '@/store/useAppStore'
 
 interface ImportZoneProps {
@@ -57,10 +58,20 @@ function rejectionNotice(fileName: string, rejected: RejectedBrickLinkItem[]): R
   }
 }
 
+function toPartList(fileName: string, parts: SetPart[]): PartList {
+  return {
+    id: crypto.randomUUID(),
+    label: fileName,
+    importedAt: new Date().toISOString(),
+    parts,
+  }
+}
+
 export function ImportZone({ project }: ImportZoneProps) {
-  const replaceBom = useAppStore((s) => s.replaceBom)
-  const mergeBom = useAppStore((s) => s.mergeBom)
+  const addPartList = useAppStore((s) => s.addPartList)
+  const replacePartLists = useAppStore((s) => s.replacePartLists)
   const addOrder = useAppStore((s) => s.addOrder)
+  const partLists = project.partLists ?? []
 
   const [messages, setMessages] = useState<{
     tone: 'success' | 'error' | 'info'
@@ -91,14 +102,16 @@ export function ImportZone({ project }: ImportZoneProps) {
     rejectedCount = 0,
   ) => {
     if (mode === 'merge') {
-      const existingIds = new Set(project.parts.map((part) => part.elementId))
+      const existingIds = new Set(
+        combinedParts(partLists).map((part) => part.elementId),
+      )
       let added = 0
       let combined = 0
       for (const part of parts) {
         if (existingIds.has(part.elementId)) combined += 1
         else added += 1
       }
-      mergeBom(project.id, parts)
+      addPartList(project.id, toPartList(fileName, parts))
       const items = [
         `${added} new element${added === 1 ? '' : 's'} added`,
       ]
@@ -117,7 +130,7 @@ export function ImportZone({ project }: ImportZoneProps) {
       return
     }
 
-    replaceBom(project.id, parts)
+    replacePartLists(project.id, toPartList(fileName, parts))
     setMessages({
       tone: rejectedCount > 0 ? 'info' : 'success',
       title: `Loaded set list from ${fileName}`,
@@ -178,7 +191,7 @@ export function ImportZone({ project }: ImportZoneProps) {
       ),
     ]
 
-    if (project.parts.length > 0) {
+    if (partLists.length > 0) {
       setMessages(null)
       setPendingBom({ parts: result.data, warnings, fileName: file.name })
       return
@@ -223,7 +236,7 @@ export function ImportZone({ project }: ImportZoneProps) {
         <FileDropzone
           label="Upload set parts list"
           hint={
-            project.parts.length > 0
+            partLists.length > 0
               ? 'CSV, JSON, or BrickLink XML · add or replace'
               : 'CSV, JSON, or BrickLink XML'
           }
@@ -259,7 +272,7 @@ export function ImportZone({ project }: ImportZoneProps) {
       {pendingBom ? (
         <BomChoiceDialog
           pending={pendingBom}
-          existingCount={project.parts.length}
+          existingCount={combinedParts(partLists).length}
           onAdd={() => {
             applyBom(
               pendingBom.parts,

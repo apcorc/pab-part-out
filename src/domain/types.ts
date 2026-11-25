@@ -8,6 +8,14 @@ export interface SetPart {
   imageUrl?: string
 }
 
+/** One imported set-parts file. Quantities stay per file so a list can be removed on its own. */
+export interface PartList {
+  id: string
+  label: string
+  importedAt: string
+  parts: SetPart[]
+}
+
 export interface OrderLine {
   elementId: ElementId
   quantity: number
@@ -30,7 +38,7 @@ export interface Project {
   name: string
   createdAt: string
   updatedAt: string
-  parts: SetPart[]
+  partLists: PartList[]
   orders: Order[]
   /** Element IDs intentionally skipped (still count toward completion). */
   excludedElementIds: ElementId[]
@@ -69,7 +77,7 @@ export type PartsFilter =
   | 'orphans'
 
 export interface AppPersistedState {
-  version: 1
+  version: 2
   projects: Project[]
   activeProjectId: string | null
   theme: ThemeMode

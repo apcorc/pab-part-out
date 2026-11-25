@@ -2,6 +2,7 @@ import { FolderPlus } from 'lucide-react'
 import { ExportBar } from '@/components/ExportBar'
 import { ImportZone } from '@/components/ImportZone'
 import { OrdersPanel } from '@/components/OrdersPanel'
+import { SetListsPanel } from '@/components/SetListsPanel'
 import { PartsTable } from '@/components/PartsTable'
 import { ProgressDashboard } from '@/components/ProgressDashboard'
 import { ProjectHeader } from '@/components/ProjectHeader'
@@ -47,6 +48,7 @@ export function MainPanel() {
       <ProjectHeader project={project} />
       <ProgressDashboard stats={stats} />
       <ImportZone key={project.id} project={project} />
+      <SetListsPanel project={project} />
       <OrdersPanel project={project} />
       <ExportBar
         projectName={project.name}
