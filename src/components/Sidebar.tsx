@@ -114,7 +114,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       <ConfirmDialog
         open={deleteId !== null}
         title="Delete project?"
-        message="This removes the set list and all imported orders for this project. This cannot be undone."
+        message="This removes the set lists and all imported orders for this project. This cannot be undone."
         confirmLabel="Delete"
         danger
         onCancel={() => setDeleteId(null)}

@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileDropzone } from '@/components/ui/FileDropzone'
 import { InlineBanner } from '@/components/ui/InlineBanner'
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import {
   isBrickLinkSetList,
   parseSetListText,
@@ -15,7 +14,8 @@ import {
   getCachedCatalog,
   loadRebrickableCatalog,
 } from '@/lib/rebrickable/catalog'
-import type { Project, SetPart } from '@/domain/types'
+import type { PartList, Project, SetPart } from '@/domain/types'
+import { combinedParts } from '@/domain/diff'
 import { useAppStore } from '@/store/useAppStore'
 
 interface ImportZoneProps {
@@ -58,9 +58,20 @@ function rejectionNotice(fileName: string, rejected: RejectedBrickLinkItem[]): R
   }
 }
 
+function toPartList(fileName: string, parts: SetPart[]): PartList {
+  return {
+    id: crypto.randomUUID(),
+    label: fileName,
+    importedAt: new Date().toISOString(),
+    parts,
+  }
+}
+
 export function ImportZone({ project }: ImportZoneProps) {
-  const replaceBom = useAppStore((s) => s.replaceBom)
+  const addPartList = useAppStore((s) => s.addPartList)
+  const replacePartLists = useAppStore((s) => s.replacePartLists)
   const addOrder = useAppStore((s) => s.addOrder)
+  const partLists = project.partLists ?? []
 
   const [messages, setMessages] = useState<{
     tone: 'success' | 'error' | 'info'
@@ -87,9 +98,39 @@ export function ImportZone({ project }: ImportZoneProps) {
     parts: SetPart[],
     warnings: string[],
     fileName: string,
+    mode: 'replace' | 'merge',
     rejectedCount = 0,
   ) => {
-    replaceBom(project.id, parts)
+    if (mode === 'merge') {
+      const existingIds = new Set(
+        combinedParts(partLists).map((part) => part.elementId),
+      )
+      let added = 0
+      let combined = 0
+      for (const part of parts) {
+        if (existingIds.has(part.elementId)) combined += 1
+        else added += 1
+      }
+      addPartList(project.id, toPartList(fileName, parts))
+      const items = [
+        `${added} new element${added === 1 ? '' : 's'} added`,
+      ]
+      if (combined > 0) {
+        items.push(
+          combined === 1
+            ? '1 matching element had its quantity combined'
+            : `${combined} matching elements had their quantities combined`,
+        )
+      }
+      setMessages({
+        tone: rejectedCount > 0 ? 'info' : 'success',
+        title: `Added parts from ${fileName}`,
+        items: [...items, ...warnings],
+      })
+      return
+    }
+
+    replacePartLists(project.id, toPartList(fileName, parts))
     setMessages({
       tone: rejectedCount > 0 ? 'info' : 'success',
       title: `Loaded set list from ${fileName}`,
@@ -150,13 +191,13 @@ export function ImportZone({ project }: ImportZoneProps) {
       ),
     ]
 
-    if (project.parts.length > 0) {
+    if (partLists.length > 0) {
       setMessages(null)
       setPendingBom({ parts: result.data, warnings, fileName: file.name })
       return
     }
 
-    applyBom(result.data, warnings, file.name, result.rejected.length)
+    applyBom(result.data, warnings, file.name, 'replace', result.rejected.length)
   }
 
   const onOrderFiles = async (files: File[]) => {
@@ -194,7 +235,11 @@ export function ImportZone({ project }: ImportZoneProps) {
       <div className="grid gap-3 md:grid-cols-2">
         <FileDropzone
           label="Upload set parts list"
-          hint="CSV, JSON, or BrickLink XML · replaces BOM"
+          hint={
+            partLists.length > 0
+              ? 'CSV, JSON, or BrickLink XML · add or replace'
+              : 'CSV, JSON, or BrickLink XML'
+          }
           accept=".csv,.json,.xml,.bsx,.txt,text/csv,application/json,text/xml,application/xml,text/plain"
           onFiles={onSetFiles}
         />
@@ -224,34 +269,132 @@ export function ImportZone({ project }: ImportZoneProps) {
         />
       ) : null}
 
-      <ConfirmDialog
-        open={pendingBom !== null}
-        title="Replace set list?"
-        message="Uploading a new set list replaces the current BOM. Imported orders are kept."
-        confirmLabel="Replace"
-        danger
-        onCancel={() => {
-          setPendingBom(null)
-          if (!rejectedDownload) return
-          setMessages({
-            tone: 'info',
-            title: 'Set list was not replaced',
-            items: [
-              `${rejectedDownload.count} rejected ${rejectedDownload.count === 1 ? 'item' : 'items'} from ${rejectedDownload.fileName} can still be downloaded.`,
-            ],
-          })
-        }}
-        onConfirm={() => {
-          if (!pendingBom) return
-          applyBom(
-            pendingBom.parts,
-            pendingBom.warnings,
-            pendingBom.fileName,
-            rejectedDownload?.count ?? 0,
-          )
-          setPendingBom(null)
-        }}
-      />
+      {pendingBom ? (
+        <BomChoiceDialog
+          pending={pendingBom}
+          existingCount={combinedParts(partLists).length}
+          onAdd={() => {
+            applyBom(
+              pendingBom.parts,
+              pendingBom.warnings,
+              pendingBom.fileName,
+              'merge',
+              rejectedDownload?.count ?? 0,
+            )
+            setPendingBom(null)
+          }}
+          onReplace={() => {
+            applyBom(
+              pendingBom.parts,
+              pendingBom.warnings,
+              pendingBom.fileName,
+              'replace',
+              rejectedDownload?.count ?? 0,
+            )
+            setPendingBom(null)
+          }}
+          onCancel={() => {
+            setPendingBom(null)
+            if (!rejectedDownload) return
+            setMessages({
+              tone: 'info',
+              title: 'Set list was not changed',
+              items: [
+                `${rejectedDownload.count} rejected ${rejectedDownload.count === 1 ? 'item' : 'items'} from ${rejectedDownload.fileName} can still be downloaded.`,
+              ],
+            })
+          }}
+        />
+      ) : null}
     </section>
+  )
+}
+
+function BomChoiceDialog({
+  pending,
+  existingCount,
+  onAdd,
+  onReplace,
+  onCancel,
+}: {
+  pending: PendingBom
+  existingCount: number
+  onAdd: () => void
+  onReplace: () => void
+  onCancel: () => void
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const onCancelRef = useRef(onCancel)
+
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  }, [onCancel])
+
+  useEffect(() => {
+    panelRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancelRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const incoming = pending.parts.length
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="presentation"
+      onClick={onCancel}
+    >
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bom-choice-title"
+        aria-describedby="bom-choice-message"
+        className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl outline-none"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 id="bom-choice-title" className="font-display text-lg font-semibold">
+          This project already has a set list
+        </h2>
+        <p id="bom-choice-message" className="mt-2 text-sm text-[var(--muted)]">
+          {`${pending.fileName} has ${incoming} ${incoming === 1 ? 'element' : 'elements'}. The current list has ${existingCount} ${existingCount === 1 ? 'element' : 'elements'}. Imported orders are kept either way.`}
+        </p>
+        <div className="mt-4 grid gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-3 text-left transition-colors hover:border-[var(--accent)]"
+            onClick={onAdd}
+          >
+            <span className="block text-sm font-semibold">Add to existing list</span>
+            <span className="mt-0.5 block text-xs text-[var(--muted)]">
+              Keep the current parts and add these. Matching element IDs have
+              their quantities combined.
+            </span>
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--border)] px-3 py-3 text-left transition-colors hover:border-[var(--error)]"
+            onClick={onReplace}
+          >
+            <span className="block text-sm font-semibold">Replace set list</span>
+            <span className="mt-0.5 block text-xs text-[var(--muted)]">
+              Remove the current list and use only this file.
+            </span>
+          </button>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button type="button" className="btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

@@ -2,6 +2,7 @@ import type {
   DiffRow,
   ElementId,
   Order,
+  PartList,
   Project,
   ProjectStats,
   SetPart,
@@ -34,6 +35,11 @@ export function mergeParts(parts: SetPart[]): SetPart[] {
   return Array.from(map.values())
 }
 
+/** Combined set list: sum each saved file by element ID. */
+export function combinedParts(partLists: PartList[] | undefined): SetPart[] {
+  return mergeParts((partLists ?? []).flatMap((list) => list.parts))
+}
+
 function metaFromOrders(
   orders: Order[],
   elementId: ElementId,
@@ -56,12 +62,13 @@ function excludedSet(project: Project): Set<ElementId> {
 
 /** Compute required vs ordered vs remaining for a project. */
 export function computeDiff(project: Project): DiffRow[] {
+  const parts = combinedParts(project.partLists)
   const orderedMap = aggregateOrders(project.orders)
-  const bomIds = new Set(project.parts.map((p) => p.elementId))
+  const bomIds = new Set(parts.map((p) => p.elementId))
   const excluded = excludedSet(project)
   const rows: DiffRow[] = []
 
-  for (const part of project.parts) {
+  for (const part of parts) {
     const isExcluded = excluded.has(part.elementId)
     const rawOrdered = orderedMap.get(part.elementId) ?? 0
     // Excluded parts do not appear as ordered / remaining / surplus.

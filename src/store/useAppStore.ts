@@ -3,15 +3,15 @@ import { persist } from 'zustand/middleware'
 import type {
   ElementId,
   Order,
+  PartList,
   Project,
-  SetPart,
   ThemeMode,
 } from '@/domain/types'
-import { mergeParts } from '@/domain/diff'
+import { combinedParts } from '@/domain/diff'
 import { migratePersistedState } from './migrate'
 
 interface AppState {
-  version: 1
+  version: 2
   projects: Project[]
   activeProjectId: string | null
   theme: ThemeMode
@@ -21,8 +21,10 @@ interface AppState {
   renameProject: (id: string, name: string) => void
   deleteProject: (id: string) => void
 
-  replaceBom: (projectId: string, parts: SetPart[]) => void
-  mergeBom: (projectId: string, parts: SetPart[]) => void
+  addPartList: (projectId: string, list: PartList) => void
+  replacePartLists: (projectId: string, list: PartList) => void
+  removePartList: (projectId: string, listId: string) => void
+  renamePartList: (projectId: string, listId: string, label: string) => void
 
   addOrder: (projectId: string, order: Order) => void
   removeOrder: (projectId: string, orderId: string) => void
@@ -39,10 +41,18 @@ interface AppState {
 
 function pruneExcluded(
   excludedElementIds: ElementId[] | undefined,
-  parts: SetPart[],
+  partLists: PartList[],
 ): ElementId[] {
-  const bomIds = new Set(parts.map((p) => p.elementId))
+  const bomIds = new Set(combinedParts(partLists).map((p) => p.elementId))
   return (excludedElementIds ?? []).filter((id) => bomIds.has(id))
+}
+
+function withPartLists(project: Project, partLists: PartList[]): Project {
+  return {
+    ...project,
+    partLists,
+    excludedElementIds: pruneExcluded(project.excludedElementIds, partLists),
+  }
 }
 
 function nowIso(): string {
@@ -64,7 +74,7 @@ function updateProject(
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      version: 1,
+      version: 2,
       projects: [],
       activeProjectId: null,
       theme: 'system',
@@ -77,7 +87,7 @@ export const useAppStore = create<AppState>()(
           name: name.trim() || 'Untitled project',
           createdAt: timestamp,
           updatedAt: timestamp,
-          parts: [],
+          partLists: [],
           orders: [],
           excludedElementIds: [],
         }
@@ -111,29 +121,43 @@ export const useAppStore = create<AppState>()(
         })
       },
 
-      replaceBom: (projectId, parts) => {
+      addPartList: (projectId, list) => {
         set((state) => ({
-          projects: updateProject(state.projects, projectId, (p) => {
-            const nextParts = mergeParts(parts)
-            return {
-              ...p,
-              parts: nextParts,
-              excludedElementIds: pruneExcluded(p.excludedElementIds, nextParts),
-            }
-          }),
+          projects: updateProject(state.projects, projectId, (p) =>
+            withPartLists(p, [...(p.partLists ?? []), list]),
+          ),
         }))
       },
 
-      mergeBom: (projectId, parts) => {
+      replacePartLists: (projectId, list) => {
         set((state) => ({
-          projects: updateProject(state.projects, projectId, (p) => {
-            const nextParts = mergeParts([...p.parts, ...parts])
-            return {
-              ...p,
-              parts: nextParts,
-              excludedElementIds: pruneExcluded(p.excludedElementIds, nextParts),
-            }
-          }),
+          projects: updateProject(state.projects, projectId, (p) =>
+            withPartLists(p, [list]),
+          ),
+        }))
+      },
+
+      removePartList: (projectId, listId) => {
+        set((state) => ({
+          projects: updateProject(state.projects, projectId, (p) =>
+            withPartLists(
+              p,
+              (p.partLists ?? []).filter((list) => list.id !== listId),
+            ),
+          ),
+        }))
+      },
+
+      renamePartList: (projectId, listId, label) => {
+        const trimmed = label.trim()
+        if (!trimmed) return
+        set((state) => ({
+          projects: updateProject(state.projects, projectId, (p) => ({
+            ...p,
+            partLists: (p.partLists ?? []).map((list) =>
+              list.id === listId ? { ...list, label: trimmed } : list,
+            ),
+          })),
         }))
       },
 
@@ -186,7 +210,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'pabpartout-v1',
-      version: 1,
+      version: 2,
       migrate: (persisted) => migratePersistedState(persisted),
       partialize: (state) => ({
         version: state.version,
